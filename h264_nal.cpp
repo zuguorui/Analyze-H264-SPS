@@ -27,6 +27,7 @@ NAL* nal_unit(BufferBitReader &reader) {
             pureNAL.push_back(reader.b(8));
             pureNAL.push_back(reader.b(8));
             i += 2;
+            reader.f(8);
         } else {
             pureNAL.push_back(reader.b(8));
         }
@@ -66,9 +67,10 @@ VUI* vui_parameters(BufferBitReader &reader) {
         vui->chroma_sample_loc_type_top_field = reader.ue();
         vui->chroma_sample_loc_type_bottom_field = reader.ue();
     }
-
+    LOGD(TAG, "timing_info_present_flag is byte aligned: %d", reader.byteAligned());
     vui->timing_info_present_flag = reader.u(1);
     if (vui->timing_info_present_flag) {
+        LOGD(TAG, "num_units_in_tick is byte aligned: %d", reader.byteAligned());
         vui->num_units_in_tick = reader.u(32);
         vui->time_scale = reader.u(32);
         vui->fixed_frame_rate_flag = reader.u(1);

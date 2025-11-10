@@ -39,9 +39,11 @@ uint32_t BufferBitReader::readBits(int bits) {
     for (int i = 0; i < bits; i++) {
         ret = ret << 1;
         uint32_t bit = (buffer[bitPosInBuffer / 8] >> (7 - (bitPosInBuffer % 8))) & 1;
+        //printf("%d", bit);
         ret = ret | bit;
         bitPosInBuffer++;
     }
+    //printf("\n");
     return ret;
 }
 

@@ -1,17 +1,22 @@
 cmake_minimum_required(VERSION 4.0)
 project(Analyze_H264_SPS)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
-add_executable(Analyze_H264_SPS main.cpp
-        FileBitReader.cpp
-        FileBitReader.h
-        Log.h
-        h264_nal.cpp
-        h264_nal.h
-        BufferBitReader.cpp
-        BufferBitReader.h
-        SPS.h
-        NAL.h
-        VUI.h
-        HRD.h)
+include_directories(./ /opt/homebrew/include/)
+
+link_directories(/opt/homebrew/lib/)
+
+file(GLOB SRC_FILES *.cpp)
+
+add_executable(Analyze_H264_SPS
+        ${SRC_FILES})
+
+target_link_libraries(
+        Analyze_H264_SPS
+        avutil
+        avdevice
+        avformat
+        avcodec
+        avfilter
+)

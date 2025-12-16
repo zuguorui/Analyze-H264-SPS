@@ -13,12 +13,27 @@ BufferBitReader::BufferBitReader(std::vector<uint8_t> &vec) {
     buffer = vec;
 }
 
+BufferBitReader::BufferBitReader(uint8_t *buffer, int size) {
+    for (int i = 0; i < size; i++) {
+        this->buffer.push_back(buffer[i]);
+    }
+}
+
 bool BufferBitReader::byteAligned() {
     return bitPosInBuffer % 8 == 0;
 }
 
-bool BufferBitReader::moreDataInByteStream() {
+bool BufferBitReader::moreBitInByteStream() {
     return bitPosInBuffer < buffer.size() * 8;
+}
+
+bool BufferBitReader::hasRemainBytes(int n) {
+    int64_t alignedBytePos = bitPosInBuffer / 8;
+    // 如果没对齐，就将字节数加1，当前所在中途字节算已读取字节
+    if (bitPosInBuffer % 8 != 0) {
+        alignedBytePos += 1;
+    }
+    return buffer.size() - alignedBytePos >= n;
 }
 
 void BufferBitReader::reset() {
@@ -27,6 +42,10 @@ void BufferBitReader::reset() {
 
 size_t BufferBitReader::getSize() {
     return buffer.size();
+}
+
+int64_t BufferBitReader::currentBitPosition() {
+    return bitPosInBuffer;
 }
 
 
@@ -39,11 +58,9 @@ uint32_t BufferBitReader::readBits(int bits) {
     for (int i = 0; i < bits; i++) {
         ret = ret << 1;
         uint32_t bit = (buffer[bitPosInBuffer / 8] >> (7 - (bitPosInBuffer % 8))) & 1;
-        //printf("%d", bit);
         ret = ret | bit;
         bitPosInBuffer++;
     }
-    //printf("\n");
     return ret;
 }
 
@@ -127,7 +144,7 @@ uint32_t BufferBitReader::u(int bits) {
 uint32_t BufferBitReader::ue() {
     int leadingZeroBits = 0;
     uint32_t bit = 0;
-    while (moreDataInByteStream() && leadingZeroBits < 30) {
+    while (moreBitInByteStream() && leadingZeroBits < 30) {
         bit = readBits(1);
         if (bit != 0) {
             break;
@@ -135,7 +152,7 @@ uint32_t BufferBitReader::ue() {
         leadingZeroBits++;
     }
 
-    if (!moreDataInByteStream()) {
+    if (!moreBitInByteStream()) {
         LOGE(TAG, "没有更多数据");
         return 0;
     }
@@ -157,12 +174,19 @@ int32_t BufferBitReader::se() {
     uint32_t codeNum = ue();
 
     // 步骤2：按标准规则转换为有符号整数
+    LOGD("BufferBitReader::se()", "codeNum=%d", codeNum);
     if (codeNum % 2 == 0) {
-        // 偶数 → 正数：codeNum / 2
-        return static_cast<int32_t>(codeNum / 2);
+        // 偶数 → 负数：codeNum / 2
+        return -static_cast<int32_t>(codeNum / 2);
     } else {
-        // 奇数 → 负数：-(codeNum + 1) / 2
-        return -static_cast<int32_t>((codeNum + 1) / 2);
+        // 奇数 → 正数：-(codeNum + 1) / 2
+        return static_cast<int32_t>((codeNum + 1) / 2);
+    }
+}
+
+void BufferBitReader::alignToNextByte() {
+    if (bitPosInBuffer % 8 != 0) {
+        bitPosInBuffer = (bitPosInBuffer / 8 + 1) * 8;
     }
 }
 

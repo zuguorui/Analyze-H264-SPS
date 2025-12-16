@@ -15,26 +15,27 @@ VUI* vui_parameters(BufferBitReader &reader);
 HRD* hrd_parameters(BufferBitReader &reader);
 
 NAL* nal_unit(BufferBitReader &reader) {
-
     NAL *nal = new NAL();
     nal->forbidden_zero_bit = reader.f(1);
     nal->nal_ref_idc = reader.u(2);
     nal->nal_unit_type = reader.u(5);
-
     vector<uint8_t> pureNAL;
-    for (int i = 0; i < reader.getSize(); i++) {
-        if (i + 2 < reader.getSize() && reader.nextBits(24) == 0x000003) {
+    while (reader.moreByteInByteStream()) {
+        if (reader.hasRemainBytes(2) && reader.nextBits(24) == 0x000003) {
             pureNAL.push_back(reader.b(8));
             pureNAL.push_back(reader.b(8));
-            i += 2;
             reader.f(8);
         } else {
             pureNAL.push_back(reader.b(8));
         }
     }
-
     nal->rbsp = pureNAL;
     return nal;
+}
+
+NAL* parse_nal(std::vector<uint8_t> &nalBody) {
+    BufferBitReader reader(nalBody);
+    return nal_unit(reader);
 }
 
 VUI* vui_parameters(BufferBitReader &reader) {
@@ -67,10 +68,10 @@ VUI* vui_parameters(BufferBitReader &reader) {
         vui->chroma_sample_loc_type_top_field = reader.ue();
         vui->chroma_sample_loc_type_bottom_field = reader.ue();
     }
-    LOGD(TAG, "timing_info_present_flag is byte aligned: %d", reader.byteAligned());
+    //LOGD(TAG, "timing_info_present_flag is byte aligned: %d", reader.byteAligned());
     vui->timing_info_present_flag = reader.u(1);
     if (vui->timing_info_present_flag) {
-        LOGD(TAG, "num_units_in_tick is byte aligned: %d", reader.byteAligned());
+        //LOGD(TAG, "num_units_in_tick is byte aligned: %d", reader.byteAligned());
         vui->num_units_in_tick = reader.u(32);
         vui->time_scale = reader.u(32);
         vui->fixed_frame_rate_flag = reader.u(1);
@@ -118,31 +119,54 @@ HRD* hrd_parameters(BufferBitReader &reader) {
     return hrd;
 }
 
-NAL* parse_nal(FileBitReader &reader) {
-    while (reader.nextBits(24) != 0x000001
-        && reader.nextBits(32) != 0x00000001
-        && reader.moreDataInByteStream()) {
-        reader.f(8);
+std::vector<uint8_t> parse_nal_body(BitReader &reader) {
+    vector<uint8_t> nalData;
+    uint32_t buf = 0;
+
+    while (reader.nextBits(24) != 0x000001 && reader.nextBits(32) != 0x00000001) {
+        reader.readByte();
+        if (!reader.moreByteInByteStream()) {
+            return nalData;
+        }
     }
+
     if (reader.nextBits(24) != 0x000001) {
-        reader.f(8);
+        reader.readByte();
     }
-    if (reader.moreDataInByteStream()) {
-        reader.f(24); // start_code_prefix_one_3bytes, 0x000001
-    } else {
+
+    reader.readBits(24);
+
+    if (!reader.moreByteInByteStream()) {
+        return nalData;
+    }
+
+    while (reader.moreByteInByteStream() && reader.nextBits(24) != 0x000001 && reader.nextBits(32) != 0x00000001) {
+        nalData.push_back(reader.readByte());
+    }
+
+    // while (nalData[nalData.size() - 1] == 0) {
+    //     nalData.pop_back();
+    // }
+
+    //LOGD(TAG, "NAL size: %lu", nalData.size());
+    //LOGD(TAG, "current bit position: %lld", reader.currentBitPosition());
+    return nalData;
+}
+
+int get_nal_type(std::vector<uint8_t> &nalBody) {
+    if (nalBody.empty()) {
+        return -1;
+    }
+    uint8_t nalHead = nalBody[0];
+    int nalType = nalHead & 0x1F;
+    return nalType;
+}
+
+NAL* parse_nal(BitReader &reader) {
+    vector<uint8_t> nalData = parse_nal_body(reader);
+    if (nalData.empty()) {
         return nullptr;
     }
-
-    vector<uint8_t> nalData;
-
-    while (reader.nextBits(24) != 0x000001
-        && reader.nextBits(32) != 0x00000001
-        && reader.moreDataInByteStream()) {
-        uint8_t a = reader.f(8);
-        nalData.push_back(a);
-    }
-
-    LOGD(TAG, "NAL size: %llu", nalData.size());
     BufferBitReader bufferBitReader(nalData);
     return nal_unit(bufferBitReader);
 }
@@ -193,5 +217,52 @@ SPS* parse_sps(NAL *nal) {
     if (sps->vui_parameters_present_flag) {
         sps->vui = vui_parameters(reader);
     }
+    reader.alignToNextByte();
     return sps;
+}
+
+PPS* parse_pps(NAL *nal) {
+    if (nal->nal_unit_type != 8) {
+        return nullptr;
+    }
+    BufferBitReader reader(nal->rbsp);
+    PPS *pps = new PPS();
+    pps->pic_parameter_set_id = reader.ue();
+    pps->seq_parameter_set_id = reader.ue();
+    pps->entropy_coding_mode_flag = reader.u(1);
+    pps->pic_order_present_flag = reader.u(1);
+    pps->num_slice_groups_minus1 = reader.ue();
+    if (pps->num_slice_groups_minus1 > 0) {
+        pps->slice_group_map_type = reader.ue();
+        if (pps->slice_group_map_type == 0) {
+            for (int i = 0; i <= pps->num_slice_groups_minus1; i++) {
+                pps->run_length_minus1.push_back(reader.ue());
+            }
+        } else if (pps->slice_group_map_type == 2) {
+            for (int i = 0; i < pps->num_slice_groups_minus1; i++) {
+                pps->top_left.push_back(reader.ue());
+                pps->bottom_right.push_back(reader.ue());
+            }
+        } else if (pps->slice_group_map_type == 3 || pps->slice_group_map_type == 4 || pps->slice_group_map_type == 5) {
+            pps->slice_group_change_direction_flag = reader.u(1);
+            pps->slice_group_change_rate_minus1 = reader.ue();
+        } else if (pps->slice_group_map_type == 6) {
+            pps->pic_size_in_map_units_minus1 = reader.ue();
+            for (int i = 0; i <= pps->pic_size_in_map_units_minus1; i++) {
+                pps->slice_group_id.push_back(reader.ue());
+            }
+        }
+    }
+    pps->num_ref_idx_l0_active_minus1 = reader.ue();
+    pps->num_ref_idx_l1_active_minus1 = reader.ue();
+    pps->weighted_pred_flag = reader.u(1);
+    pps->weighted_bipred_idc = reader.u(2);
+    pps->pic_init_qp_minus26 = reader.se();
+    pps->pic_init_qs_minus26 = reader.se();
+    pps->chroma_qp_index_offset = reader.se();
+    pps->deblocking_filter_control_present_flag = reader.u(1);
+    pps->constrained_intra_pred_flag = reader.u(1);
+    pps->redundant_pic_cnt_present_flag = reader.u(1);
+    reader.alignToNextByte();
+    return pps;
 }

@@ -8,27 +8,32 @@
 #include <cstdint>
 #include <stdlib.h>
 #include <wchar.h>
+#include "BitReader.h"
 
-class FileBitReader {
+class FileBitReader: public BitReader {
 public:
     explicit FileBitReader(const char* path);
     ~FileBitReader();
 
-    uint32_t readBits(int bits);
-    uint32_t nextBits(int bits);
+    uint32_t readBits(int bits) override;
+    uint32_t nextBits(int bits) override;
 
-    uint8_t readByte();
-    uint8_t nextByte();
+    uint8_t readByte() override;
+    uint8_t nextByte() override;
 
-    bool byteAligned();
-    bool moreDataInByteStream();
+    bool byteAligned() override;
+    bool moreBitInByteStream() override;
+    bool hasRemainBytes(int n) override;
 
-    uint32_t f(int bits);
-    uint32_t u(int bits);
-    uint32_t b(int bits);
-    int32_t i(int bits);
-    uint32_t ue();
-    int32_t se();
+    uint32_t f(int bits) override;
+    uint32_t u(int bits) override;
+    uint32_t b(int bits) override;
+    int32_t i(int bits) override;
+    uint32_t ue() override;
+    int32_t se() override;
+    void alignToNextByte() override;
+
+    int64_t currentBitPosition() override;
 
     void reset();
 

@@ -40,11 +40,21 @@ bool FileBitReader::byteAligned() {
     return bitPosInBuffer % 8 == 0;
 }
 
-bool FileBitReader::moreDataInByteStream() {
+bool FileBitReader::moreBitInByteStream() {
     if (bitPosInBuffer < bufferSize * 8 || bufferPosInFile + bufferSize < fileSize) {
         return true;
     }
     return false;
+}
+
+bool FileBitReader::hasRemainBytes(int n) {
+    int64_t alignedBytePos = bitPosInBuffer / 8;
+    // 如果没对齐，就将字节数加1，当前所在中途字节算已读取字节
+    if (bitPosInBuffer % 8 != 0) {
+        alignedBytePos += 1;
+    }
+    int64_t remainBytes = fileSize - bufferPosInFile - alignedBytePos;
+    return remainBytes >= n;
 }
 
 int64_t FileBitReader::bufferForward() {
@@ -199,7 +209,7 @@ uint32_t FileBitReader::u(int bits) {
 uint32_t FileBitReader::ue() {
     int leadingZeroBits = 0;
     uint32_t bit = 0;
-    while (moreDataInByteStream() && leadingZeroBits < 30) {
+    while (moreBitInByteStream() && leadingZeroBits < 30) {
         bit = readBits(1);
         if (bit != 0) {
             break;
@@ -207,7 +217,7 @@ uint32_t FileBitReader::ue() {
         leadingZeroBits++;
     }
 
-    if (!moreDataInByteStream()) {
+    if (!moreBitInByteStream()) {
         LOGE(TAG, "没有更多数据");
         return 0;
     }
@@ -229,14 +239,23 @@ int32_t FileBitReader::se() {
 
     // 步骤2：按标准规则转换为有符号整数
     if (codeNum % 2 == 0) {
-        // 偶数 → 正数：codeNum / 2
-        return static_cast<int32_t>(codeNum / 2);
+        // 偶数 → 负数：codeNum / 2
+        return -static_cast<int32_t>(codeNum / 2);
     } else {
-        // 奇数 → 负数：-(codeNum + 1) / 2
-        return -static_cast<int32_t>((codeNum + 1) / 2);
+        // 奇数 → 正数：-(codeNum + 1) / 2
+        return static_cast<int32_t>((codeNum + 1) / 2);
     }
 }
 
+void FileBitReader::alignToNextByte() {
+    if (bitPosInBuffer % 8 != 0) {
+        bitPosInBuffer = (bitPosInBuffer / 8 + 1) * 8;
+    }
+}
+
+int64_t FileBitReader::currentBitPosition() {
+    return bufferPosInFile * 8 + bitPosInBuffer;
+}
 
 
 

@@ -1,29 +1,14 @@
 #include <iostream>
-#include <fstream>
-#include <vector>
-#include <cstdint>
-#include <cmath>
-#include "h264_nal.h"
-#include "log.h"
+
+#include "mux_flv.h"
+#include "print_nal.h"
 
 #define TAG "MAIN"
-// ---------------------- main (for testing) ----------------------
+
 using namespace std;
 int main() {
-    //const char* path = "C:\\Users\\WangXi\\Downloads\\top_raw_2025-11-07_14-36-13.h264";
-    const char* path = "C:\\Users\\WangXi\\Downloads\\top_raw_2025-11-04_16-41-26.h264";
-    FileBitReader reader(path);
-    NAL *nal = parse_nal(reader);
-    SPS *sps = parse_sps(nal);
-    if (sps != nullptr && sps->vui != nullptr) {
-        VUI *vui = sps->vui;
-        if (vui->timing_info_present_flag) {
-            LOGD(TAG, "vui.time_scale = %d", vui->time_scale);
-            LOGD(TAG, "vui.num_units_in_tick = %d", vui->num_units_in_tick);
-            LOGD(TAG, "fps = %d", vui->time_scale / (2 * vui->num_units_in_tick));
-        }
-    }
-    delete nal;
-    delete sps;
+    const char* path = "/Users/zu/Downloads/TOP_1920x1080_30fps.h264";
+    //print_nal(path);
+    mux_flv_avcc(path, "/Users/zu/work_space/CPPProject/Analyze-H264-SPS/out.flv");
     return 0;
 }

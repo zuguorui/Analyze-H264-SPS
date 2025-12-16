@@ -4,7 +4,7 @@
 
 #include "h264_nal.h"
 
-#include "log.h"
+#include "Log.h"
 
 #define TAG "H264_NAL"
 
@@ -148,7 +148,7 @@ std::vector<uint8_t> parse_nal_body(BitReader &reader) {
     //     nalData.pop_back();
     // }
 
-    //LOGD(TAG, "NAL size: %lu", nalData.size());
+    LOGD(TAG, "NAL size: %lu", nalData.size());
     //LOGD(TAG, "current bit position: %lld", reader.currentBitPosition());
     return nalData;
 }

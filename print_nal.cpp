@@ -3,7 +3,7 @@
 //
 
 #include "print_nal.h"
-#include "log.h"
+#include "Log.h"
 
 #define TAG "print_nal"
 
@@ -48,4 +48,8 @@ void print_nal(const char *path) {
         delete nal;
         nal = nullptr;
     }
+}
+
+void binary_search(std::vector<uint8_t> target) {
+
 }

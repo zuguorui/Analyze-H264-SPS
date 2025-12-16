@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "log.h"
+#include "Log.h"
 
 #include <cstdio>
 #include <cmath>

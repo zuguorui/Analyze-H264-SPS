@@ -10,7 +10,7 @@ extern "C" {
 #include <libavformat/avio.h>
 }
 
-#include "log.h"
+#include "Log.h"
 
 #define TAG "mux_flv"
 
@@ -363,10 +363,20 @@ void mux_flv_annexb(const char *h264Path, const char *flvPath) {
     stream->codecpar->format = AV_PIX_FMT_NV21;
     stream->codecpar->framerate = av_d2q(fps, 1000);
 
-    int csdSize = spsNAL.size() + ppsNAL.size();
+    int csdSize = spsNAL.size() + 4 + ppsNAL.size() + 4;
     uint8_t *csd = new uint8_t[csdSize];
-    memcpy(csd, spsNAL.data(), csdSize);
-    memcpy(csd + spsNAL.size(), ppsNAL.data(), ppsNAL.size());
+    int dstIndex = 0;
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 1;
+    memcpy(csd + dstIndex, spsNAL.data(), spsNAL.size());
+    dstIndex += spsNAL.size();
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 0;
+    csd[dstIndex++] = 1;
+    memcpy(csd + dstIndex, ppsNAL.data(), ppsNAL.size());
 
     stream->codecpar->extradata = csd;
     stream->codecpar->extradata_size = csdSize;
@@ -390,44 +400,6 @@ void mux_flv_annexb(const char *h264Path, const char *flvPath) {
             spsNAL = nalBody;
         } else if (nalType == 8) {
             ppsNAL = nalBody;
-        } else if (nalType == 5) {
-            if (lastPts < 0) {
-                lastPts = 0;
-            } else {
-                lastPts += interval;
-            }
-
-            av_new_packet(pkt, nalBody.size() + 4 + spsNAL.size() + 4 + ppsNAL.size() + 4);
-            int dstIndex = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 1;
-            memcpy(pkt->data + dstIndex, spsNAL.data(), spsNAL.size());
-            dstIndex += spsNAL.size();
-
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 1;
-            memcpy(pkt->data + dstIndex, ppsNAL.data(), ppsNAL.size());
-            dstIndex += ppsNAL.size();
-
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 0;
-            pkt->data[dstIndex++] = 1;
-            memcpy(pkt->data + dstIndex, nalBody.data(), nalBody.size());
-            dstIndex += nalBody.size();
-
-            pkt->stream_index = 0;
-            pkt->pts = lastPts;
-            pkt->dts = lastPts;
-            pkt->time_base = MILLI_SECONDS_TIME_BASE;
-            pkt->flags = 0;
-            pkt->flags |= AV_PKT_FLAG_KEY;
-            av_interleaved_write_frame(formatCtx, pkt);
-            av_packet_unref(pkt);
         } else {
             if (lastPts < 0) {
                 lastPts = 0;
@@ -435,19 +407,21 @@ void mux_flv_annexb(const char *h264Path, const char *flvPath) {
                 lastPts += interval;
             }
             av_new_packet(pkt, nalBody.size() + 4);
-            int dstIndex = 0;
+            dstIndex = 0;
             pkt->data[dstIndex++] = 0;
             pkt->data[dstIndex++] = 0;
             pkt->data[dstIndex++] = 0;
             pkt->data[dstIndex++] = 1;
             memcpy(pkt->data + dstIndex, nalBody.data(), nalBody.size());
-            dstIndex += nalBody.size();
-
+            pkt->size = nalBody.size() + 4;
             pkt->stream_index = 0;
             pkt->pts = lastPts;
             pkt->dts = lastPts;
             pkt->time_base = MILLI_SECONDS_TIME_BASE;
             pkt->flags = 0;
+            if (nalType == 5) {
+                pkt->flags |= AV_PKT_FLAG_KEY;
+            }
             av_interleaved_write_frame(formatCtx, pkt);
             av_packet_unref(pkt);
         }

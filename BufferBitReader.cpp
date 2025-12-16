@@ -3,7 +3,7 @@
 //
 
 #include "BufferBitReader.h"
-#include "log.h"
+#include "Log.h"
 
 using namespace std;
 

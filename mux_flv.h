@@ -5,6 +5,8 @@
 #ifndef ANALYZE_H264_SPS_MUX_FLV_H
 #define ANALYZE_H264_SPS_MUX_FLV_H
 
+#include <vector>
+
 void mux_flv_avcc(const char *h264Path, const char *flvPath);
 
 void mux_flv_annexb(const char *h264Path, const char *flvPath);

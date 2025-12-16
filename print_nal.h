@@ -9,4 +9,6 @@
 
 void print_nal(const char *path);
 
+void binary_search(std::vector<uint8_t> target);
+
 #endif //ANALYZE_H264_SPS_PRINT_NAL_H

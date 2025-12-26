@@ -7,7 +7,7 @@
 
 #include <vector>
 
-struct HRD {
+struct H264_HRD {
     uint32_t cpb_cnt_minus1 = 0;
     uint32_t bitrate_scale = 0;
     uint32_t cpb_size_scale = 0;

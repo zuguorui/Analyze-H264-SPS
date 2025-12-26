@@ -4,21 +4,23 @@
 
 #include "print_nal.h"
 #include "Log.h"
+#include "FileByteReader.h"
+#include "H264/h264_analyze.h"
 
 #define TAG "print_nal"
 
 void print_nal(const char *path) {
-    FileBitReader reader(path);
-    NAL *nal = nullptr;
-    while ((nal = parse_nal(reader)) != nullptr) {
+    FileByteReader reader(path);
+    H264_NAL *nal = nullptr;
+    while ((nal = h264_parse_nal(reader)) != nullptr) {
         LOGD(TAG, "nal_unit_type = %d, nal_ref_idc = %d", nal->nal_unit_type, nal->nal_ref_idc);
         if (nal->nal_unit_type == 7) {
             LOGD(TAG, "find sps unit, sps size = %d", nal->rbsp.size());
-            SPS *sps = parse_sps(nal);
+            H264_SPS *sps = h264_parse_sps(nal);
             if (sps != nullptr) {
                 LOGD(TAG, "seq_parameter_set_id = %d", sps->seq_parameter_set_id);
                 if (sps->vui != nullptr) {
-                    VUI *vui = sps->vui;
+                    H264_VUI *vui = sps->vui;
                     if (vui->timing_info_present_flag) {
                         LOGD(TAG, "vui.time_scale = %d", vui->time_scale);
                         LOGD(TAG, "vui.num_units_in_tick = %d", vui->num_units_in_tick);
@@ -32,7 +34,7 @@ void print_nal(const char *path) {
 
         } else if(nal->nal_unit_type == 8) {
             LOGD(TAG, "find pps unit, pps size = %d", nal->rbsp.size());
-            PPS *pps = parse_pps(nal);
+            H264_PPS *pps = h264_parse_pps(nal);
             if (pps != nullptr) {
                 LOGD(TAG, "seq_parameter_set_id = %d", pps->seq_parameter_set_id);
                 LOGD(TAG, "num_slic_groups_minus1 = %d", pps->num_slice_groups_minus1);
@@ -48,8 +50,4 @@ void print_nal(const char *path) {
         delete nal;
         nal = nullptr;
     }
-}
-
-void binary_search(std::vector<uint8_t> target) {
-
 }

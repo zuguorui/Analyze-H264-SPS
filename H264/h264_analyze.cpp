@@ -2,7 +2,8 @@
 // Created by WangXi on 2025/11/6.
 //
 
-#include "h264_nal.h"
+#include "h264_analyze.h"
+#include "BufferBitReader.h"
 
 #include "Log.h"
 
@@ -10,12 +11,12 @@
 
 using namespace std;
 
-NAL* nal_unit(BufferBitReader &reader);
-VUI* vui_parameters(BufferBitReader &reader);
-HRD* hrd_parameters(BufferBitReader &reader);
+H264_NAL* nal_unit(BitReader &reader);
+H264_VUI* vui_parameters(BitReader &reader);
+H264_HRD* hrd_parameters(BitReader &reader);
 
-NAL* nal_unit(BufferBitReader &reader) {
-    NAL *nal = new NAL();
+H264_NAL* nal_unit(BitReader &reader) {
+    H264_NAL *nal = new H264_NAL();
     nal->forbidden_zero_bit = reader.f(1);
     nal->nal_ref_idc = reader.u(2);
     nal->nal_unit_type = reader.u(5);
@@ -33,13 +34,13 @@ NAL* nal_unit(BufferBitReader &reader) {
     return nal;
 }
 
-NAL* parse_nal(std::vector<uint8_t> &nalBody) {
+H264_NAL* h264_parse_nal(std::vector<uint8_t> &nalBody) {
     BufferBitReader reader(nalBody);
     return nal_unit(reader);
 }
 
-VUI* vui_parameters(BufferBitReader &reader) {
-    VUI *vui = new VUI();
+H264_VUI* vui_parameters(BitReader &reader) {
+    H264_VUI *vui = new H264_VUI();
     vui->aspect_ratio_info_present_flag = reader.u(1);
     if (vui->aspect_ratio_info_present_flag) {
         vui->aspect_ratio_idc = reader.u(8);
@@ -102,8 +103,8 @@ VUI* vui_parameters(BufferBitReader &reader) {
     return vui;
 }
 
-HRD* hrd_parameters(BufferBitReader &reader) {
-    HRD *hrd = new HRD();
+H264_HRD* hrd_parameters(BitReader &reader) {
+    H264_HRD *hrd = new H264_HRD();
     hrd->cpb_cnt_minus1 = reader.ue();
     hrd->bitrate_scale = reader.u(4);
     hrd->cpb_size_scale = reader.u(4);
@@ -119,7 +120,7 @@ HRD* hrd_parameters(BufferBitReader &reader) {
     return hrd;
 }
 
-std::vector<uint8_t> parse_nal_body(BitReader &reader) {
+std::vector<uint8_t> h264_parse_nal_body(BitReader &reader) {
     vector<uint8_t> nalData;
     uint32_t buf = 0;
 
@@ -153,17 +154,37 @@ std::vector<uint8_t> parse_nal_body(BitReader &reader) {
     return nalData;
 }
 
-int get_nal_type(std::vector<uint8_t> &nalBody) {
-    if (nalBody.empty()) {
-        return -1;
+vector<uint8_t> h264_parse_nal_body(ByteReader &reader) {
+    vector<uint8_t> nalData;
+    uint32_t buf = 0;
+    while (reader.nextBytes(3) != 0x000001 && reader.nextBytes(4) != 0x00000001) {
+        reader.readByte();
+        if (!reader.hasMoreBytes()) {
+            return nalData;
+        }
     }
-    uint8_t nalHead = nalBody[0];
-    int nalType = nalHead & 0x1F;
-    return nalType;
+
+    if (reader.nextBytes(3) != 0x000001) {
+        reader.readByte();
+    }
+
+    reader.readBytes(3);
+    if (!reader.hasMoreBytes()) {
+        return nalData;
+    }
+    while (reader.hasMoreBytes() && reader.nextBytes(3) != 0x000001 && reader.nextBytes(4) != 0x00000001) {
+        nalData.push_back(reader.readByte());
+    }
+
+    while (nalData[nalData.size() - 1] == 0) {
+        nalData.pop_back();
+    }
+
+    return nalData;
 }
 
-NAL* parse_nal(BitReader &reader) {
-    vector<uint8_t> nalData = parse_nal_body(reader);
+H264_NAL* h264_parse_nal(BitReader &reader) {
+    vector<uint8_t> nalData = h264_parse_nal_body(reader);
     if (nalData.empty()) {
         return nullptr;
     }
@@ -171,12 +192,21 @@ NAL* parse_nal(BitReader &reader) {
     return nal_unit(bufferBitReader);
 }
 
-SPS* parse_sps(NAL *nal) {
+H264_NAL* h264_parse_nal(ByteReader &reader) {
+    vector<uint8_t> nalData = h264_parse_nal_body(reader);
+    if (nalData.empty()) {
+        return nullptr;
+    }
+    BufferBitReader bufferBitReader(nalData);
+    return nal_unit(bufferBitReader);
+}
+
+H264_SPS* h264_parse_sps(H264_NAL *nal) {
     if (nal->nal_unit_type != 7) {
         return nullptr;
     }
     BufferBitReader reader(nal->rbsp);
-    SPS *sps = new SPS();
+    H264_SPS *sps = new H264_SPS();
     sps->profile_idc = reader.u(8);
     sps->constraint_set0_flag = reader.u(1);
     sps->constraint_set1_flag = reader.u(1);
@@ -221,12 +251,12 @@ SPS* parse_sps(NAL *nal) {
     return sps;
 }
 
-PPS* parse_pps(NAL *nal) {
+H264_PPS* h264_parse_pps(H264_NAL *nal) {
     if (nal->nal_unit_type != 8) {
         return nullptr;
     }
     BufferBitReader reader(nal->rbsp);
-    PPS *pps = new PPS();
+    H264_PPS *pps = new H264_PPS();
     pps->pic_parameter_set_id = reader.ue();
     pps->seq_parameter_set_id = reader.ue();
     pps->entropy_coding_mode_flag = reader.u(1);
@@ -265,4 +295,35 @@ PPS* parse_pps(NAL *nal) {
     pps->redundant_pic_cnt_present_flag = reader.u(1);
     reader.alignToNextByte();
     return pps;
+}
+
+int h264_get_nal_type(std::vector<uint8_t> &nalBody) {
+    if (nalBody.empty()) {
+        return -1;
+    }
+    uint8_t nalHead = nalBody[0];
+    int nalType = nalHead & 0x1F;
+    return nalType;
+}
+
+bool h264_is_key_frame(uint8_t *data, int size) {
+    if (size < 4) return false;
+
+    // 跳过起始码
+    int offset = 2;
+    if (data[0] == 0x00 && data[1] == 0x00) {
+        if (data[2] == 0x01){
+            offset = 3;
+        }
+        else if (data[2] == 0x00 && data[3] == 0x01) {
+            offset = 4;
+        }
+    }
+    if (offset >= size) {
+        return false;
+    }
+    uint8_t nalHeader = data[offset];
+    uint8_t nalType = nalHeader & 0x1F;
+
+    return nalType == 5 || nalType == 7 || nalType == 8;
 }

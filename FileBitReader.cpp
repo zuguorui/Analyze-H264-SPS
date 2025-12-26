@@ -3,13 +3,9 @@
 //
 
 #include "FileBitReader.h"
-
 #include <algorithm>
-
 #include "Log.h"
-
 #include <cstdio>
-#include <cmath>
 
 using namespace std;
 

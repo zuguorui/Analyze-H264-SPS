@@ -174,7 +174,6 @@ int32_t BufferBitReader::se() {
     uint32_t codeNum = ue();
 
     // 步骤2：按标准规则转换为有符号整数
-    LOGD("BufferBitReader::se()", "codeNum=%d", codeNum);
     if (codeNum % 2 == 0) {
         // 偶数 → 负数：codeNum / 2
         return -static_cast<int32_t>(codeNum / 2);

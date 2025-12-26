@@ -8,9 +8,9 @@
 #include <cstdint>
 #include <stdlib.h>
 #include <vector>
-#include "VUI.h"
+#include "H264_VUI.h"
 
-struct SPS {
+struct H264_SPS {
     uint32_t profile_idc = 0;
     uint32_t constraint_set0_flag = 0;
     uint32_t constraint_set1_flag = 0;
@@ -54,12 +54,12 @@ struct SPS {
 
     uint32_t vui_parameters_present_flag = 0;
     // if (vui_parameters_present_flag)
-    VUI *vui = nullptr;
+    H264_VUI *vui = nullptr;
     // endif
 
     // rbsp_trailing_bits()
 
-    ~SPS() {
+    ~H264_SPS() {
         if (vui != nullptr) {
             delete vui;
         }

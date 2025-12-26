@@ -5,9 +5,9 @@
 #ifndef ANALYZE_H264_SPS_VUI_H
 #define ANALYZE_H264_SPS_VUI_H
 
-#include "HRD.h"
+#include "H264_HRD.h"
 
-struct VUI {
+struct H264_VUI {
     uint32_t aspect_ratio_info_present_flag = 0;
     // if #1 (aspect_ratio_info_present_flag)
     uint32_t aspect_ratio_idc = 0;
@@ -44,12 +44,12 @@ struct VUI {
     // endif
     uint32_t nal_hrd_parameters_present_flag = 0;
     // if (nal_hrd_parameters_present_flag)
-    HRD *nal_hrd = nullptr;
+    H264_HRD *nal_hrd = nullptr;
     // endif
 
     uint32_t vcl_hrd_parameters_present_flag = 0;
     // if (vcl_hrd_parameters_present_flag)
-    HRD *vcl_hrd = nullptr;
+    H264_HRD *vcl_hrd = nullptr;
     // endif
 
     // if (nal_hrd_parameters_present_flag || vcl_hrd_parameters_present_flag)
@@ -68,7 +68,7 @@ struct VUI {
     uint32_t max_dec_frame_buffering = 0;
     // endif
 
-    ~VUI() {
+    ~H264_VUI() {
         if (nal_hrd != nullptr) {
             delete nal_hrd;
         }

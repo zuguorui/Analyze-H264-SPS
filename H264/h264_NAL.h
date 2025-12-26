@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-struct NAL {
+struct H264_NAL {
     int32_t forbidden_zero_bit;
     uint32_t nal_ref_idc;
     uint32_t nal_unit_type;

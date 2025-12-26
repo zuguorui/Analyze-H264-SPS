@@ -1,14 +1,15 @@
 #include <iostream>
 
-#include "mux_flv.h"
-#include "print_nal.h"
+#include "test/mux.h"
+#include "test/print_nal.h"
 
 #define TAG "MAIN"
 
 using namespace std;
 int main() {
-    const char* path = "/Users/zu/Downloads/2025-12-16_22-19-31_30FPS_1920x1080.h264";
+    const char* path = "/Users/zu/Downloads/TOP_1920x1080_30fps.h264";
     //print_nal(path);
-    mux_flv_annexb(path, "/Users/zu/Downloads/out.flv");
+    //mux_h264_flv(path, "/Users/zu/Downloads/out.flv");
+    mux_h264(path, "/Users/zu/Downloads/out.mov", "mov");
     return 0;
 }

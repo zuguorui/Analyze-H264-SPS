@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <vector>
 
-struct PPS {
+struct H264_PPS {
     uint32_t pic_parameter_set_id = 0;
     uint32_t seq_parameter_set_id = 0;
     uint32_t entropy_coding_mode_flag = 0;

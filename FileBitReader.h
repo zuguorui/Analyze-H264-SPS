@@ -5,9 +5,7 @@
 #ifndef ANALYZE_H264_SPS_FILEBITSTREAMREADER_H
 #define ANALYZE_H264_SPS_FILEBITSTREAMREADER_H
 
-#include <cstdint>
-#include <stdlib.h>
-#include <wchar.h>
+#include <stdio.h>
 #include "BitReader.h"
 
 class FileBitReader: public BitReader {

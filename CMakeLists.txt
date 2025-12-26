@@ -7,7 +7,7 @@ include_directories(./ /opt/homebrew/include/)
 
 link_directories(/opt/homebrew/lib/)
 
-file(GLOB SRC_FILES *.cpp)
+file(GLOB SRC_FILES *.cpp test/*.cpp H264/*.cpp)
 
 add_executable(Analyze_H264_SPS
         ${SRC_FILES})

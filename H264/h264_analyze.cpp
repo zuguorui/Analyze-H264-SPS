@@ -183,6 +183,49 @@ vector<uint8_t> h264_parse_nal_body(ByteReader &reader) {
     return nalData;
 }
 
+int h264_parse_raw_nal(ByteReader &reader, std::vector<uint8_t> &nalData) {
+    nalData.clear();
+    int type = 0;
+    auto separate_nal = [&]() -> int {
+        while (reader.nextBytes(3) != 0x000001 && reader.nextBytes(4) != 0x00000001) {
+            reader.readByte();
+            if (!reader.hasMoreBytes()) {
+                return -1;
+            }
+        }
+        if (reader.nextBytes(3) != 0x000001) {
+            nalData.push_back(reader.readByte());
+        }
+        for (int i = 0; i < 3; i++) {
+            nalData.push_back(reader.readByte());
+        }
+        if (!reader.hasMoreBytes()) {
+            return -1;
+        }
+        uint8_t header = reader.nextByte();
+        type = header & 0x1F;
+        while (reader.hasMoreBytes() && reader.nextBytes(3) != 0x000001 && reader.nextBytes(4) != 0x00000001) {
+            nalData.push_back(reader.readByte());
+        }
+        return 0;
+    };
+
+    int ret = 0;
+    while (true) {
+        ret = separate_nal();
+        if (ret < 0) {
+            break;
+        }
+        if (type == 7 || type == 8) {
+            // 是SPS或PPS，那么要等待IDR帧一起，拼成一个buffer再返回
+        } else {
+            break;
+        }
+    }
+
+    return ret;
+}
+
 H264_NAL* h264_parse_nal(BitReader &reader) {
     vector<uint8_t> nalData = h264_parse_nal_body(reader);
     if (nalData.empty()) {
@@ -201,6 +244,20 @@ H264_NAL* h264_parse_nal(ByteReader &reader) {
     return nal_unit(bufferBitReader);
 }
 
+void scaling_list(BitReader &reader, vector<int> &scalingList, int sizeOfScalingList, int &useDefaultScalingMatrixFlag) {
+    int lastScale = 8;
+    int nextScale = 8;
+    for (int j = 0; j < sizeOfScalingList; j++) {
+        if (nextScale != 0) {
+            int deltaScale = reader.se();
+            nextScale = (lastScale + deltaScale + 256) % 256;
+            useDefaultScalingMatrixFlag = (j == 0 && nextScale == 0);
+        }
+        scalingList.push_back(nextScale == 0 ? lastScale : nextScale);
+        lastScale = scalingList[j];
+    }
+}
+
 H264_SPS* h264_parse_sps(H264_NAL *nal) {
     if (nal->nal_unit_type != 7) {
         return nullptr;
@@ -211,9 +268,40 @@ H264_SPS* h264_parse_sps(H264_NAL *nal) {
     sps->constraint_set0_flag = reader.u(1);
     sps->constraint_set1_flag = reader.u(1);
     sps->constraint_set2_flag = reader.u(1);
-    reader.u(5);
+    sps->constraint_set3_flag = reader.u(1);
+    sps->constraint_set4_flag = reader.u(1);
+    sps->constraint_set5_flag = reader.u(1);
+    reader.u(2);
     sps->level_idc = reader.u(8);
     sps->seq_parameter_set_id = reader.ue();
+    if (h264_is_high_profile(sps->profile_idc)) {
+        sps->chroma_format_idc = reader.ue();
+        if (sps->chroma_format_idc == 3) {
+            sps->separate_colour_plane_flag = reader.u(1);
+        }
+        sps->bit_depth_luma_minus8 = reader.ue();
+        sps->bit_depth_chroma_minus8 = reader.ue();
+        sps->qpprime_y_zero_transform_bypass_flag = reader.u(1);
+        sps->seq_scaling_matrix_present_flag = reader.u(1);
+        if (sps->seq_scaling_matrix_present_flag) {
+            for (int i = 0; i < (sps->chroma_format_idc != 3 ? 8 : 12); i++) {
+                int flag = reader.u(1);
+                sps->seq_scaling_list_present_flag.push_back(flag);
+                if (flag) {
+                    // 这里没有在SPS中实际赋值，因此暂时先不解析它，只读取reader中数据。
+                    if (i < 6) {
+                        vector<int32_t> ScalingList4x4;
+                        int UseDefaultScalingMatrix4x4Flag;
+                        scaling_list(reader, ScalingList4x4, 16, UseDefaultScalingMatrix4x4Flag);
+                    } else {
+                        vector<int32_t> ScalingList8x8;
+                        int UseDefaultScalingMatrix8x8Flag;
+                        scaling_list(reader, ScalingList8x8, 64, UseDefaultScalingMatrix8x8Flag);
+                    }
+                }
+            }
+        }
+    }
     sps->log2_max_frame_num_minus4 = reader.ue();
     sps->pic_order_cnt_type = reader.ue();
     if (sps->pic_order_cnt_type == 0) {
@@ -250,6 +338,8 @@ H264_SPS* h264_parse_sps(H264_NAL *nal) {
     reader.alignToNextByte();
     return sps;
 }
+
+
 
 H264_PPS* h264_parse_pps(H264_NAL *nal) {
     if (nal->nal_unit_type != 8) {
@@ -327,3 +417,88 @@ bool h264_is_key_frame(uint8_t *data, int size) {
 
     return nalType == 5 || nalType == 7 || nalType == 8;
 }
+
+bool h264_is_high_profile(int profile_idc) {
+    return profile_idc == 100 || profile_idc == 110 ||
+        profile_idc == 122 || profile_idc == 244 ||
+        profile_idc == 44 || profile_idc == 83 ||
+        profile_idc == 86 || profile_idc == 118 ||
+        profile_idc == 128 || profile_idc == 138 ||
+        profile_idc == 139 ||profile_idc == 134 || profile_idc == 135;
+}
+
+H264_SPS_BasedInfo* h264_parse_sps_based_info(uint8_t *data, int size) {
+    if (size < 4) {
+        return nullptr;
+    }
+    int offset = 0;
+    if (data[0] == 0 && data[1] == 0 && data[2] == 1) {
+        offset = 3;
+    } else if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1) {
+        offset = 4;
+    }
+    uint8_t nalHeader = data[offset];
+    uint8_t nalType = nalHeader & 0x1F;
+    if (nalType != 7) {
+        return nullptr;
+    }
+    auto reader = BufferBitReader(data + offset, size - offset);
+    auto nal = nal_unit(reader);
+    if (!nal) {
+        return nullptr;
+    }
+    auto sps = h264_parse_sps(nal);
+    if (!sps) {
+        delete(nal);
+        return nullptr;
+    }
+    int width = (sps->pic_width_in_mbs_minus1 + 1) * 16;
+    int height = (2 - sps->frame_mbs_only_flag) * (sps->pic_height_in_map_units_minus1 + 1) * 16;
+    if (sps->frame_cropping_flag) {
+        int crop_unit_x = 0;
+        int crop_unit_y = 0;
+        if (h264_is_high_profile(sps->profile_idc)) {
+            // chroma_format_idc == 0
+            crop_unit_x = 1;
+            crop_unit_y = 2 - sps->frame_mbs_only_flag;
+            if (sps->chroma_format_idc == 1) {    // 4:2:0
+                crop_unit_x = 2;
+                crop_unit_y = 2 * (2 - sps->frame_mbs_only_flag);
+            } else if (sps->chroma_format_idc == 2) { // 4:2:2
+                crop_unit_x = 2;
+                crop_unit_y = 2 - sps->frame_mbs_only_flag;
+            } else if (sps->chroma_format_idc == 3) { // 4:4:4
+                crop_unit_x = 1;
+                crop_unit_y = 2 - sps->frame_mbs_only_flag;
+            }
+        } else {
+            // 按(4:2:0)计算，标准规定
+            crop_unit_x = 2;
+            crop_unit_y = 2 * (2 - sps->frame_mbs_only_flag);
+        }
+
+        LOGD(TAG, "chroma_format_idc = %d, frame_mbs_only_flag = %d, cropUnitX = %d, cropUnitY = %d", sps->chroma_format_idc, sps->frame_mbs_only_flag, crop_unit_x, crop_unit_y);
+        width -= (sps->frame_crop_left_offset + sps->frame_crop_right_offset) * crop_unit_x;
+        height -= (sps->frame_crop_top_offset + sps->frame_crop_bottom_offset) * crop_unit_y;
+    }
+    float fps = -1.0f;
+    if (sps->vui != nullptr) {
+        H264_VUI *vui = sps->vui;
+        if (vui->timing_info_present_flag) {
+            LOGD(TAG, "vui.time_scale = %d", vui->time_scale);
+            LOGD(TAG, "vui.num_units_in_tick = %d", vui->num_units_in_tick);
+            if (vui->num_units_in_tick != 0) {
+                fps = vui->time_scale * 1.0 / (2 * vui->num_units_in_tick);
+                LOGD(TAG, "解析到fps = %f", fps);
+            }
+        }
+    }
+    auto result = new H264_SPS_BasedInfo();
+    result->width = width;
+    result->height = height;
+    result->fps = fps;
+    delete(nal);
+    delete(sps);
+    return result;
+}
+

@@ -7,9 +7,10 @@
 
 #include "../BitReader.h"
 #include "../ByteReader.h"
-#include "h264_NAL.h"
+#include "H264_NAL.h"
 #include "H264_SPS.h"
 #include "H264_PPS.h"
+#include "H264_SPS_BasedInfo.h"
 #include <vector>
 
 /**
@@ -61,7 +62,16 @@ std::vector<uint8_t> h264_parse_nal_body(BitReader &reader);
 std::vector<uint8_t> h264_parse_nal_body(ByteReader &reader);
 
 /**
- * 判断data是否是关键帧数据。判断依据是关键帧是第一个NAL是否是SPS/PPS/IDR。
+ * 从流中解析原始的nal，不做任何修改，只返回完整数据。
+ * 在关键帧处理上，会将SPS+PPS+IDR一起打包。方便各种解码器或者推流处理
+ * @param reader
+ * @param nalData
+ * @return 0：成功。-1：不完整
+ */
+int h264_parse_raw_nal(ByteReader &reader, std::vector<uint8_t> &nalData);
+
+/**
+ * 判断data是否是关键帧数据。判断依据是关键帧是第一个NAL是否是SPS/PPS/IDR。要求包含起始码
  * @param data
  * @param size
  * @return
@@ -74,5 +84,9 @@ bool h264_is_key_frame(uint8_t *data, int size);
  * @return
  */
 int h264_get_nal_type(std::vector<uint8_t> &nalBody);
+
+bool h264_is_high_profile(int profile_idc);
+
+H264_SPS_BasedInfo* h264_parse_sps_based_info(uint8_t *data, int size);
 
 #endif //ANALYZE_H264_SPS_H264_NAL_H
